@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Confirmar recebimento · Vai e Vem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@600&family=Fraunces:opsz,wght@9..144,700&display=swap" rel="stylesheet">
+<!--
+  PÁGINA DO CLIENTE (etapa 9a do PLANO.md)
+  O cliente abre o link que a empresa mandou pelo WhatsApp:
+    https://petersongp-ship-it.github.io/vaievem-confirmar/#<código de 64 letras>
+  O código vai depois do "#": assim ele nem chega ao servidor da página.
+  A página só conversa com o Supabase por duas funções (ver
+  supabase/01-envios.sql no projeto do app): ver_envio e responder_envio.
+  A chave abaixo é a PÚBLICA (publishable), feita para ficar em páginas e
+  apps; quem protege os dados são as funções e a tabela fechada.
+-->
+<style>
+  :root {
+    --marinho: #1F3A5F;
+    --marinho-escuro: #132A46;
+    --amarelo: #E0A100;
+    --fundo: #E9EDF2;
+    --cartao: #FFFFFF;
+    --texto: #0F172A;
+    --suave: #5B6B80;
+    --borda: #D5DAE1;
+    --sucesso: #1E7B4A;
+    --sucesso-claro: #E7F4EC;
+    --perigo: #B42318;
+    --aviso: #B45309;
+    --aviso-claro: #FEF3E2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--fundo);
+    color: var(--texto);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  header {
+    background: var(--marinho);
+    border-bottom: 4px solid var(--amarelo);
+    padding: 18px 16px;
+  }
+  .marca { display: flex; align-items: center; gap: 10px; max-width: 520px; margin: 0 auto; }
+  .marca span { font-family: 'Fraunces', serif; font-size: 20px; color: #fff; }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px 40px; }
+  .cartao {
+    background: var(--cartao);
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 20px 18px;
+    margin-bottom: 14px;
+  }
+  .aviso-topo { font-size: 13px; letter-spacing: 1.2px; font-weight: 700; color: var(--marinho); margin: 0 0 8px; }
+  h1 { font-size: 21px; line-height: 1.35; margin: 0 0 14px; }
+  h1 strong { color: var(--marinho); }
+  .numero { font-family: 'IBM Plex Mono', monospace; }
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 15px; }
+  dt { color: var(--suave); }
+  dd { margin: 0; font-weight: 600; }
+  button {
+    font: inherit;
+    width: 100%;
+    min-height: 56px;
+    border-radius: 6px;
+    border: 0;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: wait; }
+  .confirmar { background: var(--amarelo); color: var(--marinho-escuro); margin-bottom: 10px; }
+  .divergencia { background: var(--cartao); color: var(--marinho); border: 2px solid var(--marinho); }
+  .voltar { background: transparent; color: var(--marinho); font-size: 15px; min-height: 44px; margin-top: 4px; }
+  label { display: block; font-weight: 600; font-size: 15px; margin: 14px 0 6px; }
+  label small { font-weight: 400; color: var(--suave); }
+  input, textarea {
+    font: inherit;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--texto);
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  input:focus, textarea:focus, button:focus-visible { outline: 3px solid var(--amarelo); outline-offset: 1px; }
+  .acoes { margin-top: 18px; }
+  .resultado { text-align: center; }
+  .resultado .selo {
+    width: 64px; height: 64px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 4px auto 12px;
+  }
+  .ok { background: var(--sucesso-claro); color: var(--sucesso); }
+  .atencao { background: var(--aviso-claro); color: var(--aviso); }
+  .erro { color: var(--perigo); font-weight: 600; margin: 10px 0 0; }
+  .suave { color: var(--suave); font-size: 14px; }
+  .convite {
+    display: block;
+    text-align: center;
+    font-size: 14px;
+    color: var(--suave);
+    padding: 14px 8px;
+    text-decoration: none;
+    border-top: 1px solid var(--borda);
+    margin-top: 10px;
+  }
+  .convite strong { color: var(--marinho); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <div class="marca">
+    <svg width="32" height="32" viewBox="0 0 40 40" aria-hidden="true">
+      <circle cx="20" cy="20" r="20" fill="#E0A100"/>
+      <path d="M10 15.5 H28 M23.5 11 L28 15.5 L23.5 20" stroke="#1F3A5F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M30 24.5 H12 M16.5 20 L12 24.5 L16.5 29" stroke="#1F3A5F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span>Vai e Vem</span>
+  </div>
+</header>
+
+<main>
+  <!-- Carregando -->
+  <div id="carregando" class="cartao"><p class="suave">Carregando o envio…</p></div>
+
+  <!-- Link errado ou sem conexão -->
+  <div id="falha" class="cartao" hidden>
+    <h1>Não encontramos este envio</h1>
+    <p id="falha-texto" class="suave">Confira se o link está completo, do jeito que chegou na mensagem.</p>
+  </div>
+
+  <!-- O envio -->
+  <section id="envio" hidden>
+    <div class="cartao">
+      <p class="aviso-topo">CONFIRMAÇÃO DE RECEBIMENTO</p>
+      <h1>A empresa <strong id="empresa"></strong> informa o envio de <span class="numero" id="quantidade"></span> <span id="item"></span>.</h1>
+      <dl>
+        <dt>Para</dt><dd id="cliente"></dd>
+        <dt>Enviado em</dt><dd id="data"></dd>
+        <dt id="ref-rotulo">Nota fiscal</dt><dd id="referencia"></dd>
+      </dl>
+    </div>
+
+    <!-- Escolha -->
+    <div id="escolha" class="cartao">
+      <label for="recebido-por">Quem está recebendo? <small>(opcional)</small></label>
+      <input id="recebido-por" autocomplete="name" maxlength="120" placeholder="Seu nome">
+      <div class="acoes">
+        <button type="button" class="confirmar" id="botao-confirmar">Confirmar recebimento</button>
+        <button type="button" class="divergencia" id="botao-divergencia">Reportar divergência</button>
+      </div>
+      <p id="erro-escolha" class="erro" hidden></p>
+    </div>
+
+    <!-- Divergência -->
+    <form id="form-divergencia" class="cartao" hidden>
+      <p class="aviso-topo">REPORTAR DIVERGÊNCIA</p>
+      <label for="qtd-recebida">Quantos chegaram de fato?</label>
+      <input id="qtd-recebida" type="number" inputmode="numeric" min="0" max="1000000" required>
+      <label for="observacao">O que aconteceu? <small>(opcional)</small></label>
+      <textarea id="observacao" maxlength="500" placeholder="Ex: 20 chegaram quebrados"></textarea>
+      <div class="acoes">
+        <button type="submit" class="confirmar" id="botao-enviar-divergencia">Enviar divergência</button>
+        <button type="button" class="voltar" id="botao-voltar">Voltar</button>
+      </div>
+      <p id="erro-divergencia" class="erro" hidden></p>
+    </form>
+
+    <!-- Já respondido -->
+    <div id="respondido" class="cartao resultado" hidden>
+      <div id="selo" class="selo"></div>
+      <h1 id="respondido-titulo"></h1>
+      <p id="respondido-texto" class="suave"></p>
+    </div>
+  </section>
+
+  <a class="convite" href="https://petersongp-ship-it.github.io/vaievem-confirmar/sobre.html">
+    Controle o que sai e volta da sua empresa com o <strong>Vai e Vem Empresa</strong> ›
+  </a>
+</main>
+
+<script>
+  // Projeto Vaievem no Supabase (São Paulo) e a chave PÚBLICA.
+  var SUPABASE_URL = 'https://asxycrckyqawcankbemo.supabase.co';
+  var CHAVE_PUBLICA = 'sb_publishable_6SldCy1RyFnk95B3X6cOVA_0pYz3Do-';
+
+  var token = (location.hash || '').replace(/^#/, '').trim();
+  var envio = null;
+  var $ = function (id) { return document.getElementById(id); };
+
+  function chamar(funcao, dados) {
+    return fetch(SUPABASE_URL + '/rest/v1/rpc/' + funcao, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: CHAVE_PUBLICA,
+        Authorization: 'Bearer ' + CHAVE_PUBLICA,
+      },
+      body: JSON.stringify(dados),
+    }).then(function (r) {
+      return r.json().then(function (corpo) {
+        if (!r.ok) throw new Error((corpo && corpo.message) || 'Erro ' + r.status);
+        return corpo;
+      });
+    });
+  }
+
+  // "2026-10-20" -> "20/10/2026"
+  function dataBR(iso) {
+    var p = String(iso || '').slice(0, 10).split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : '';
+  }
+  function milhar(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+
+  function mostrar(id) {
+    ['carregando', 'falha', 'envio'].forEach(function (x) { $(x).hidden = x !== id; });
+  }
+
+  function mostrarRespondido() {
+    $('escolha').hidden = true;
+    $('form-divergencia').hidden = true;
+    $('respondido').hidden = false;
+    var ok = envio.resposta === 'confirmado';
+    $('selo').className = 'selo ' + (ok ? 'ok' : 'atencao');
+    $('selo').innerHTML = ok
+      ? '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>'
+      : '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6"/><circle cx="12" cy="17" r="0.8" fill="currentColor"/></svg>';
+    $('respondido-titulo').textContent = ok ? 'Recebimento confirmado' : 'Divergência enviada';
+    var quando = envio.respondido_em ? ' em ' + new Date(envio.respondido_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+    var quem = envio.recebido_por ? ' por ' + envio.recebido_por : '';
+    $('respondido-texto').textContent = ok
+      ? 'Registrado' + quem + quando + '. A empresa ' + envio.empresa + ' já recebeu a confirmação. Obrigado!'
+      : 'Chegaram ' + milhar(envio.quantidade_recebida) + ' de ' + milhar(envio.quantidade) + '. Registrado' + quem + quando +
+        '. A empresa ' + envio.empresa + ' vai entrar em contato.';
+  }
+
+  function preencher() {
+    $('empresa').textContent = envio.empresa;
+    $('quantidade').textContent = milhar(envio.quantidade);
+    $('item').textContent = envio.item;
+    $('cliente').textContent = envio.cliente;
+    $('data').textContent = dataBR(envio.data_envio);
+    $('referencia').textContent = envio.referencia || '—';
+    $('qtd-recebida').max = 1000000;
+    mostrar('envio');
+    if (envio.resposta) mostrarRespondido();
+  }
+
+  function responder(resposta, quantidadeRecebida, observacao, botao, erroEl) {
+    botao.disabled = true;
+    erroEl.hidden = true;
+    var recebidoPor = $('recebido-por').value.trim();
+    chamar('responder_envio', {
+      p_token: token,
+      p_resposta: resposta,
+      p_quantidade_recebida: quantidadeRecebida,
+      p_recebido_por: recebidoPor,
+      p_observacao: observacao,
+    })
+      // Relê do servidor: mostra o que ficou gravado (inclusive se alguém já tinha respondido).
+      .then(function () { return chamar('ver_envio', { p_token: token }); })
+      .then(function (linhas) {
+        if (linhas && linhas[0]) envio = linhas[0];
+        mostrarRespondido();
+      })
+      .catch(function (e) {
+        botao.disabled = false;
+        erroEl.textContent = 'Não foi possível enviar agora. Confira a internet e tente de novo. (' + e.message + ')';
+        erroEl.hidden = false;
+      });
+  }
+
+  $('botao-confirmar').addEventListener('click', function () {
+    responder('confirmado', null, '', this, $('erro-escolha'));
+  });
+  $('botao-divergencia').addEventListener('click', function () {
+    $('escolha').hidden = true;
+    $('form-divergencia').hidden = false;
+    $('qtd-recebida').focus();
+  });
+  $('botao-voltar').addEventListener('click', function () {
+    $('form-divergencia').hidden = true;
+    $('escolha').hidden = false;
+  });
+  $('form-divergencia').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var qtd = Number($('qtd-recebida').value);
+    if (!Number.isInteger(qtd) || qtd < 0) {
+      $('erro-divergencia').textContent = 'Digite quantos chegaram (um número inteiro).';
+      $('erro-divergencia').hidden = false;
+      return;
+    }
+    responder('divergencia', qtd, $('observacao').value.trim(), $('botao-enviar-divergencia'), $('erro-divergencia'));
+  });
+
+  if (!/^[0-9a-f]{64}$/.test(token)) {
+    mostrar('falha');
+  } else {
+    chamar('ver_envio', { p_token: token })
+      .then(function (linhas) {
+        if (!linhas || !linhas[0]) { mostrar('falha'); return; }
+        envio = linhas[0];
+        preencher();
+      })
+      .catch(function () {
+        $('falha-texto').textContent = 'Não foi possível carregar agora. Confira a internet e abra o link de novo.';
+        mostrar('falha');
+      });
+  }
+</script>
+</body>
+</html>

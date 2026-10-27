@@ -15,7 +15,8 @@
     https://petersongp-ship-it.github.io/vaievem-confirmar/#<código de 64 letras>
   O código vai depois do "#": assim ele nem chega ao servidor da página.
   A página só conversa com o Supabase por duas funções (ver
-  supabase/01-envios.sql no projeto do app): ver_envio e responder_envio.
+  supabase/01-envios.sql no projeto do app): ver_envio e responder_envio
+  (e, no kit, responder_kit: supabase/02-kits.sql).
   A chave abaixo é a PÚBLICA (publishable), feita para ficar em páginas e
   apps; quem protege os dados são as funções e a tabela fechada.
 -->
@@ -115,6 +116,13 @@
     margin-top: 10px;
   }
   .convite strong { color: var(--marinho); }
+  /* Kit: lista dos itens e, na divergência, um campo por item */
+  .lista-kit { list-style: none; margin: 0 0 14px; padding: 0; border-top: 1px solid var(--borda); }
+  .lista-kit li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--borda); }
+  .lista-kit .numero { color: var(--marinho); }
+  .linha-item { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .linha-item label { flex: 1; margin: 0; }
+  .linha-item input { width: 96px; flex: none; text-align: center; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -144,11 +152,13 @@
   <section id="envio" hidden>
     <div class="cartao">
       <p class="aviso-topo">CONFIRMAÇÃO DE RECEBIMENTO</p>
-      <h1>A empresa <strong id="empresa"></strong> informa o envio de <span class="numero" id="quantidade"></span> <span id="item"></span>.</h1>
+      <h1 id="titulo-um">A empresa <strong id="empresa"></strong> informa o envio de <span class="numero" id="quantidade"></span> <span id="item"></span>.</h1>
+      <h1 id="titulo-kit" hidden>A empresa <strong id="kit-empresa"></strong> informa o envio do kit <strong id="kit-nome"></strong>:</h1>
+      <ul id="lista-kit" class="lista-kit" hidden></ul>
       <dl>
         <dt>Para</dt><dd id="cliente"></dd>
         <dt>Enviado em</dt><dd id="data"></dd>
-        <dt id="ref-rotulo">Nota fiscal</dt><dd id="referencia"></dd>
+        <dt id="ref-rotulo">Nota fiscal</dt><dd id="ref-valor"><span id="referencia"></span></dd>
       </dl>
     </div>
 
@@ -166,8 +176,14 @@
     <!-- Divergência -->
     <form id="form-divergencia" class="cartao" hidden>
       <p class="aviso-topo">REPORTAR DIVERGÊNCIA</p>
-      <label for="qtd-recebida">Quantos chegaram de fato?</label>
-      <input id="qtd-recebida" type="number" inputmode="numeric" min="0" max="1000000" required>
+      <div id="bloco-um">
+        <label for="qtd-recebida">Quantos chegaram de fato?</label>
+        <input id="qtd-recebida" type="number" inputmode="numeric" min="0" max="1000000" required>
+      </div>
+      <div id="bloco-kit" hidden>
+        <p class="suave">Quantos chegaram de cada item? Corrija só o que veio diferente.</p>
+        <div id="campos-kit"></div>
+      </div>
       <label for="observacao">O que aconteceu? <small>(opcional)</small></label>
       <textarea id="observacao" maxlength="500" placeholder="Ex: 20 chegaram quebrados"></textarea>
       <div class="acoes">
@@ -227,6 +243,8 @@
     ['carregando', 'falha', 'envio'].forEach(function (x) { $(x).hidden = x !== id; });
   }
 
+  function ehKit() { return Array.isArray(envio && envio.itens) && envio.itens.length > 1; }
+
   function mostrarRespondido() {
     $('escolha').hidden = true;
     $('form-divergencia').hidden = true;
@@ -239,35 +257,98 @@
     $('respondido-titulo').textContent = ok ? 'Recebimento confirmado' : 'Divergência enviada';
     var quando = envio.respondido_em ? ' em ' + new Date(envio.respondido_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
     var quem = envio.recebido_por ? ' por ' + envio.recebido_por : '';
+    var chegaram = 'Chegaram ' + milhar(envio.quantidade_recebida) + ' de ' + milhar(envio.quantidade);
+    // Kit: o que chegou de cada item que veio diferente.
+    if (ehKit() && envio.itens_recebidos) {
+      var diferentes = envio.itens.filter(function (i) { return envio.itens_recebidos[i.id] !== i.quantidade; });
+      chegaram = 'Chegaram: ' + diferentes.map(function (i) {
+        return i.item + ' ' + milhar(envio.itens_recebidos[i.id]) + ' de ' + milhar(i.quantidade);
+      }).join('; ') + ' (o resto, completo)';
+    }
     $('respondido-texto').textContent = ok
       ? 'Registrado' + quem + quando + '. A empresa ' + envio.empresa + ' já recebeu a confirmação. Obrigado!'
-      : 'Chegaram ' + milhar(envio.quantidade_recebida) + ' de ' + milhar(envio.quantidade) + '. Registrado' + quem + quando +
-        '. A empresa ' + envio.empresa + ' vai entrar em contato.';
+      : chegaram + '. Registrado' + quem + quando + '. A empresa ' + envio.empresa + ' vai entrar em contato.';
+  }
+
+  // Kit: título, lista dos itens e um campo por item na divergência.
+  // (Tudo com textContent: o que vem da nuvem nunca vira HTML.)
+  function preencherKit() {
+    $('titulo-um').hidden = true;
+    $('titulo-kit').hidden = false;
+    $('kit-empresa').textContent = envio.empresa;
+    $('kit-nome').textContent = envio.item;
+    var lista = $('lista-kit');
+    lista.hidden = false;
+    lista.textContent = '';
+    envio.itens.forEach(function (i, n) {
+      var li = document.createElement('li');
+      var nome = document.createElement('span');
+      nome.textContent = i.item;
+      var qtd = document.createElement('span');
+      qtd.className = 'numero';
+      qtd.textContent = milhar(i.quantidade);
+      li.appendChild(nome);
+      li.appendChild(qtd);
+      lista.appendChild(li);
+
+      var linha = document.createElement('div');
+      linha.className = 'linha-item';
+      var rotulo = document.createElement('label');
+      rotulo.htmlFor = 'kit-qtd-' + n;
+      rotulo.textContent = i.item + ' (enviados: ' + milhar(i.quantidade) + ')';
+      var campo = document.createElement('input');
+      campo.id = 'kit-qtd-' + n;
+      campo.type = 'number';
+      campo.inputMode = 'numeric';
+      campo.min = '0';
+      campo.max = '1000000';
+      campo.value = String(i.quantidade);
+      campo.dataset.id = i.id;
+      linha.appendChild(rotulo);
+      linha.appendChild(campo);
+      $('campos-kit').appendChild(linha);
+    });
+    $('bloco-um').hidden = true;
+    $('qtd-recebida').required = false;
+    $('bloco-kit').hidden = false;
   }
 
   function preencher() {
+    if (ehKit()) preencherKit();
     $('empresa').textContent = envio.empresa;
     $('quantidade').textContent = milhar(envio.quantidade);
     $('item').textContent = envio.item;
     $('cliente').textContent = envio.cliente;
     $('data').textContent = dataBR(envio.data_envio);
     $('referencia').textContent = envio.referencia || '—';
+    // No kit, a NF já vai no nome do kit.
+    $('ref-rotulo').hidden = ehKit();
+    $('ref-valor').hidden = ehKit();
     $('qtd-recebida').max = 1000000;
     mostrar('envio');
     if (envio.resposta) mostrarRespondido();
   }
 
-  function responder(resposta, quantidadeRecebida, observacao, botao, erroEl) {
+  // recebidos: só na divergência do kit ({ id: quantos chegaram }).
+  function responder(resposta, quantidadeRecebida, observacao, botao, erroEl, recebidos) {
     botao.disabled = true;
     erroEl.hidden = true;
     var recebidoPor = $('recebido-por').value.trim();
-    chamar('responder_envio', {
-      p_token: token,
-      p_resposta: resposta,
-      p_quantidade_recebida: quantidadeRecebida,
-      p_recebido_por: recebidoPor,
-      p_observacao: observacao,
-    })
+    var pedido = recebidos
+      ? chamar('responder_kit', {
+          p_token: token,
+          p_recebidos: recebidos,
+          p_recebido_por: recebidoPor,
+          p_observacao: observacao,
+        })
+      : chamar('responder_envio', {
+          p_token: token,
+          p_resposta: resposta,
+          p_quantidade_recebida: quantidadeRecebida,
+          p_recebido_por: recebidoPor,
+          p_observacao: observacao,
+        });
+    pedido
       // Relê do servidor: mostra o que ficou gravado (inclusive se alguém já tinha respondido).
       .then(function () { return chamar('ver_envio', { p_token: token }); })
       .then(function (linhas) {
@@ -287,7 +368,7 @@
   $('botao-divergencia').addEventListener('click', function () {
     $('escolha').hidden = true;
     $('form-divergencia').hidden = false;
-    $('qtd-recebida').focus();
+    (ehKit() ? document.querySelector('#campos-kit input') : $('qtd-recebida')).focus();
   });
   $('botao-voltar').addEventListener('click', function () {
     $('form-divergencia').hidden = true;
@@ -295,6 +376,22 @@
   });
   $('form-divergencia').addEventListener('submit', function (ev) {
     ev.preventDefault();
+    if (ehKit()) {
+      var recebidos = {};
+      var errado = false;
+      document.querySelectorAll('#campos-kit input').forEach(function (c) {
+        var n = Number(c.value);
+        if (c.value === '' || !Number.isInteger(n) || n < 0) errado = true;
+        recebidos[c.dataset.id] = n;
+      });
+      if (errado) {
+        $('erro-divergencia').textContent = 'Digite quantos chegaram de cada item (um número inteiro).';
+        $('erro-divergencia').hidden = false;
+        return;
+      }
+      responder('divergencia', null, $('observacao').value.trim(), $('botao-enviar-divergencia'), $('erro-divergencia'), recebidos);
+      return;
+    }
     var qtd = Number($('qtd-recebida').value);
     if (!Number.isInteger(qtd) || qtd < 0) {
       $('erro-divergencia').textContent = 'Digite quantos chegaram (um número inteiro).';
